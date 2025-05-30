@@ -1,10 +1,15 @@
+/* frontend/app/globals.css */
+
+/* 1) Trae todo Tailwind de golpe */
 @import "tailwindcss";
 
+/* 2) Variables de tema */
 :root {
-  --background: #ffffff;
+  --background: #84f340;
   --foreground: #171717;
 }
 
+/* Plugin “theme inline” (Tailwind 4) */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -12,6 +17,7 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* 3) Modo oscuro */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -19,6 +25,7 @@
   }
 }
 
+/* 4) Tus estilos globales */
 body {
   background: var(--background);
   color: var(--foreground);

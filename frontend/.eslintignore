@@ -1,0 +1,4 @@
+# Ignorar dependencias y builds
+node_modules/
+.next/
+public/

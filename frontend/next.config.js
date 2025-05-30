@@ -11,17 +11,12 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination:
-          process.env.NODE_ENV === 'development'
-            ? 'http://localhost:4000/api/:path*'
-            : `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
+        // quitamos la bifurcación por NODE_ENV:
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
       },
       {
         source: '/avatars/:path*',
-        destination:
-          process.env.NODE_ENV === 'development'
-            ? 'http://localhost:4000/avatars/:path*'
-            : `${process.env.NEXT_PUBLIC_API_URL}/avatars/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/avatars/:path*`,
       },
     ];
   },

@@ -1,14 +1,20 @@
-// tailwind.config.js
+// frontend/tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-    content: [
-      './app/**/*.{js,ts,jsx,tsx}',
-      './components/**/*.{js,ts,jsx,tsx}',
-      // Si más adelante añades /pages, inclúyelo aquí:
-      // './pages/**/*.{js,ts,jsx,tsx}',
-    ],
-    theme: {
-      extend: {},
+  content: [
+    './app/**/*.{js,ts,jsx,tsx}',
+    './app/components/**/*.{js,ts,jsx,tsx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        primary: '#A3E635',
+        secondary: '#FACC15',
+      }
     },
-    plugins: [],
-  }
+  },
+  plugins: [
+    // si quieres seguir usando @theme inline:
+    // require('tailwindcss-theme-inline'),
+  ],
+}
