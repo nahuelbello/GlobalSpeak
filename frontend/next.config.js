@@ -1,4 +1,5 @@
-// next.config.js
+// frontend/next.config.js
+
 console.log(
   '🔥 next.config.js cargado, ENV:',
   process.env.NODE_ENV,
@@ -11,7 +12,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        // quitamos la bifurcación por NODE_ENV:
+        // Redirige TODO a la URL que pongas en NEXT_PUBLIC_API_URL
         destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
       },
       {
