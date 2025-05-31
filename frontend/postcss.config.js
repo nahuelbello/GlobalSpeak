@@ -1,10 +1,7 @@
-// postcss.config.js
-console.log('🛠 cargando PostCSS config desde', __dirname);
-
+// frontend/postcss.config.js
 module.exports = {
   plugins: {
-    // Ahora usamos @tailwindcss/postcss en lugar de tailwindcss
-    '@tailwindcss/postcss': {},
+    tailwindcss: {},
     autoprefixer: {},
   },
 };
