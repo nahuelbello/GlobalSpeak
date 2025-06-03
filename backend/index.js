@@ -12,10 +12,17 @@ const cors    = require('cors');
 const http    = require('http');
 const { Server } = require('socket.io');
 
+const app    = express();
+const server = http.createServer(app);
+const io     = new Server(server, { cors: { origin: '*' } });
+app.set('io', io);
+
 // Declaración del puerto antes de cualquier uso
 const PORT = process.env.PORT || 4000;
 
-// Rutas
+// ——————————————————————————————————
+// Rutas ya existentes
+// ——————————————————————————————————
 const authRoutes               = require('./routes/auth');
 const userRoutes               = require('./routes/users');
 const postRoutes               = require('./routes/posts');
@@ -33,18 +40,19 @@ const avatarRouter             = require('./routes/avatar');
 const chatRoomsRouter          = require('./routes/chat_rooms');
 const messagesRouter           = require('./routes/messages');
 
-const app    = express();
-const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*' } });
-app.set('io', io);
+// ——————————————————————————————————
+// Nueva ruta de Stripe (antes de express.json())
+// ——————————————————————————————————
+const stripeRouter = require('./routes/stripe');
 
-// --- Parse allowed origins from env ---
+// ——————————————————————————————————
+// Middlewares globales
+// ——————————————————————————————————
+// CORS dinámico
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : [];
 
-// --- Middlewares globales ---
-// CORS dinámico
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);           // curl, Postman, etc.
@@ -54,18 +62,24 @@ app.use(cors({
   credentials: true
 }));
 
+// **MUST**: Webhook de Stripe necesita raw body antes de JSON parser
+app.post('/api/stripe/webhook', stripeRouter);
+
+// Parse JSON para el resto
 app.use(express.json());
 
-// Logging middleware: registra cada petición entrante
+// Logging middleware
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ▶ ${req.method} ${req.url}`);
   next();
 });
 
-// Sirve los archivos estáticos de /public
+// Sirve archivos estáticos de /public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- Rutas API ---
+// ——————————————————————————————————
+// Montaje de rutas API
+// ——————————————————————————————————
 app.use('/api/auth',               authRoutes);
 app.use('/api/users',              userRoutes);
 app.use('/api/posts',              postRoutes);
@@ -83,12 +97,17 @@ app.use(avatarRouter);             // POST /api/users/:id/avatar
 app.use('/api/chat_rooms',         chatRoomsRouter);
 app.use('/api/messages',           messagesRouter);
 
+// Montamos las rutas de Stripe (excepto el webhook, que ya montamos arriba)
+app.use('/api/stripe', stripeRouter);
+
 // Health check
 app.get('/api/ping', (req, res) => {
   res.json({ pong: true });
 });
 
+// ——————————————————————————————————
 // WebSocket para chat
+// ——————————————————————————————————
 io.on('connection', socket => {
   socket.on('join', ({ chatRoomId, userId }) => {
     socket.join(`chat_room:${chatRoomId}`);

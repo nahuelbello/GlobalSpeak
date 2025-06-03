@@ -1,28 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "🔄 1. Limpiando e instalando dependencias raíz…"
-rm -rf node_modules package-lock.json
-npm install
+echo "🔄 1. Saltando instalación en la raíz (no se necesita)…"
 
 echo "🔄 2. Instalando deps en frontend…"
 cd frontend
 rm -rf node_modules package-lock.json
 npm install
+echo "✅ Frontend OK"
+cd ..
 
 echo "🔄 3. Instalando deps en backend…"
-cd ../backend
+cd backend
 rm -rf node_modules package-lock.json
 npm install
-
-echo "✅ Dependencias OK"
+echo "✅ Backend OK"
 
 echo "🔎 4. Comprobando variables de entorno…"
 [ -f ../frontend/.env.local ] && echo "  • frontend/.env.local encontrado" \
   || { echo "❌ Falta frontend/.env.local"; exit 1; }
 [ -f .env ] && echo "  • backend/.env encontrado" \
   || { echo "❌ Falta backend/.env"; exit 1; }
-
 echo "✅ Variables de entorno OK"
 
 echo "🚀 5. Iniciando backend en prod…"

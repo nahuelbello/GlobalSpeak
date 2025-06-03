@@ -14,19 +14,23 @@ export default function ProfilePage() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading]     = useState(true);
 
-  // edición de bio
+  // — edición de bio —
   const [editingBio, setEditingBio] = useState(false);
   const [draftBio, setDraftBio]     = useState("");
 
-  // datos extra
-  const [interests, setInterests]         = useState([]);
-  const [specialties, setSpecialties]     = useState([]);
+  // — datos extra del perfil —
+  const [interests, setInterests]           = useState([]);
+  const [specialties, setSpecialties]       = useState([]);
   const [certifications, setCertifications] = useState([]);
-  const [languages, setLanguages]         = useState([]);
-  const [price, setPrice]                 = useState(null);
-  const [level, setLevel]                 = useState("");
+  const [languages, setLanguages]           = useState([]);
+  const [price, setPrice]                   = useState(null);
+  const [level, setLevel]                   = useState("");
 
-  // usuario actual
+  // — Stripe fields —
+  const [stripeStatus, setStripeStatus]       = useState(null);
+  const [stripePayoutReady, setStripePayoutReady] = useState(false);
+
+  // — usuario actual —
   const currentUserId   =
     typeof window !== "undefined" ? localStorage.getItem("userId") : null;
   const token           =
@@ -38,7 +42,7 @@ export default function ProfilePage() {
   const currentUserRole = storedUser?.role;
   const isOwn           = String(currentUserId) === String(id);
 
-  // cargar perfil
+  // — cargar perfil y campos extra, incluyendo Stripe —
   useEffect(() => {
     setLoading(true);
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -55,6 +59,8 @@ export default function ProfilePage() {
           languages: langs,
           price: p,
           level: lvl,
+          stripe_account_status,
+          stripe_payout_ready,
         } = await res.json();
 
         setUser(u);
@@ -67,6 +73,8 @@ export default function ProfilePage() {
         setLanguages(langs || []);
         setPrice(p ?? null);
         setLevel(lvl || "");
+        setStripeStatus(stripe_account_status || "new");
+        setStripePayoutReady(stripe_payout_ready || false);
       } catch (err) {
         console.error(err);
       } finally {
@@ -75,7 +83,7 @@ export default function ProfilePage() {
     })();
   }, [id, token]);
 
-  // guardar bio
+  // — guardar biografía —
   const saveBio = async () => {
     const res = await fetch(`/api/users/${id}`, {
       method: "PATCH",
@@ -93,7 +101,7 @@ export default function ProfilePage() {
     }
   };
 
-  // seguir/dejar de seguir
+  // — seguir / dejar de seguir —
   const handleFollowToggle = async () => {
     const res = await fetch("/api/follows", {
       method: "POST",
@@ -132,6 +140,43 @@ export default function ProfilePage() {
       <main className="max-w-3xl mx-auto p-4 space-y-8">
         {user.role === "profesor" ? (
           <>
+            {/* Si es tutor y no está verificado en Stripe → botón de onboarding */}
+            {isOwn && stripeStatus !== "verified" && (
+              <section className="mb-6">
+                <div className="p-4 bg-yellow-50 border border-yellow-300 rounded">
+                  <h3 className="font-semibold text-lg mb-2 text-yellow-800">
+                    ⏳ Configura tus pagos con Stripe
+                  </h3>
+                  <p className="mb-2 text-yellow-700">
+                    Para que tus alumnos puedan reservar y pagarte, completa el onboarding en Stripe.
+                  </p>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/stripe/create-account", {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                          },
+                        });
+                        if (!res.ok) throw new Error("Error al solicitar Stripe account");
+                        const { url } = await res.json();
+                        window.location.href = url;
+                      } catch (err) {
+                        console.error("Error onboarding Stripe:", err);
+                        alert("No se pudo iniciar el onboarding de Stripe.");
+                      }
+                    }}
+                    className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                  >
+                    Configurar pagos con Stripe
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {/* Secciones ya existentes del tutor */}
             <TeacherSections
               user={user}
               userId={id}
@@ -144,7 +189,11 @@ export default function ProfilePage() {
               token={token}
               refreshProfile={() => window.location.reload()}
             />
-            {currentUserRole === "alumno" && !isOwn && (
+
+            {/* Si el visitante es un alumno y el tutor está verificado, mostrar el slot picker */}
+            {currentUserRole === "alumno" &&
+             isOwn === false &&
+             stripeStatus === "verified" && (
               <section className="mt-8">
                 <h2 className="text-xl font-semibold mb-2">Reserva tu clase</h2>
                 <StudentSlotPicker

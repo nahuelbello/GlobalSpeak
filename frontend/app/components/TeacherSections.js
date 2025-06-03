@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   TEACHER_SPECIALTIES,
   TEACHER_CERTIFICATIONS,
@@ -21,7 +21,7 @@ export default function TeacherSections({
   token,
   refreshProfile,
 }) {
-  // --- Estados edición ---
+  // — Estados para edición de campos existentes —
   const [editingSpecs, setEditingSpecs] = useState(false);
   const [draftSpecs, setDraftSpecs] = useState(specialties);
 
@@ -37,7 +37,17 @@ export default function TeacherSections({
   const [editingNat, setEditingNat] = useState(false);
   const [draftNat, setDraftNat] = useState(nationality);
 
-  // --- Handlers PATCH campo a campo ---
+  // — Estado para manejar Stripe Onboarding —
+  const [stripeStatus, setStripeStatus] = useState(user?.stripe_account_status || "new");
+
+  // Si el `user` cambia (por refreshProfile), sincronizamos el stripeStatus
+  useEffect(() => {
+    if (user?.stripe_account_status) {
+      setStripeStatus(user.stripe_account_status);
+    }
+  }, [user]);
+
+  // — Handlers para actualizar cada campo en /api/users/:id/fields —
   const saveSpecs = async () => {
     await fetch(`/api/users/${userId}/fields`, {
       method: "PATCH",
@@ -103,15 +113,31 @@ export default function TeacherSections({
     refreshProfile();
   };
 
-  // ---- Componente Chip para tags ----
+  // — Handler para iniciar onboarding en Stripe —
+  const handleOnboard = async () => {
+    try {
+      const res = await fetch("/api/stripe/create-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) throw new Error("Error al solicitar Stripe account");
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch (err) {
+      console.error("Error en handleOnboard():", err);
+      alert("No se pudo iniciar el onboarding de Stripe. Intenta de nuevo.");
+    }
+  };
+
+  // — Un pequeño componente Chip reutilizable —
   const Chip = ({ children, onRemove }) => (
     <span className="inline-block bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs mr-2 mb-1">
       {children}
       {onRemove && (
-        <button
-          className="ml-1 text-red-600 font-bold"
-          onClick={onRemove}
-        >
+        <button className="ml-1 text-red-600 font-bold" onClick={onRemove}>
           ×
         </button>
       )}
@@ -120,8 +146,28 @@ export default function TeacherSections({
 
   return (
     <>
-      
-      {/* Especialidades */}
+      {/* 1. Si el tutor no está verificado en Stripe, mostrar botón de onboarding */}
+      {isOwn && stripeStatus !== "verified" && (
+        <section className="mb-6">
+          <div className="max-w-3xl mx-auto p-4 border border-yellow-300 bg-yellow-50 rounded">
+            <h3 className="font-semibold text-lg mb-2 text-yellow-800">
+              ⏳ Configura tus pagos
+            </h3>
+            <p className="mb-2 text-yellow-700">
+              Para recibir pagos por tus clases, debes completar un breve formulario en Stripe.
+            </p>
+            <button
+              onClick={handleOnboard}
+              className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+            >
+              Configurar pagos con Stripe
+            </button>
+          </div>
+        </section>
+      )}
+
+
+      {/* 2. Especialidades */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Especialidades</h2>
         {isOwn && editingSpecs ? (
@@ -200,7 +246,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* Certificaciones */}
+      {/* 3. Certificaciones */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Certificaciones</h2>
         {isOwn && editingCerts ? (
@@ -279,7 +325,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* Idiomas */}
+      {/* 4. Idiomas */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Idiomas</h2>
         {isOwn && editingLangs ? (
@@ -358,7 +404,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* Tarifa por hora (USD) */}
+      {/* 5. Tarifa por hora (USD) */}
       <section>
         <h2 className="text-xl font-semibold mb-2">
           Tarifa por hora (USD)
@@ -367,11 +413,11 @@ export default function TeacherSections({
           <div className="flex items-center gap-2">
             <input
               type="number"
-                  min="0"
-                  className="border p-2 rounded"
-                  value={draftPrice}
-                  onChange={(e) => setDraftPrice(e.target.value)}
-                />
+              min="0"
+              className="border p-2 rounded"
+              value={draftPrice}
+              onChange={(e) => setDraftPrice(e.target.value)}
+            />
             <button
               onClick={savePrice}
               className="bg-blue-600 text-white px-4 py-2 rounded"
@@ -403,7 +449,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* Disponibilidad semanal recurrente */}
+      {/* 6. Disponibilidad semanal */}
       {isOwn && (
         <section className="mt-6">
           <h2 className="text-xl font-semibold mb-2">
