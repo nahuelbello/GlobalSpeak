@@ -1,4 +1,3 @@
-// app/profile/[id]/page.js
 "use client";
 
 import { useState, useEffect } from "react";
@@ -10,16 +9,16 @@ import StudentSlotPicker from "../../components/StudentSlotPicker";
 
 export default function ProfilePage() {
   const { id } = useParams();
-  const [user, setUser]               = useState(null);
+  const [user, setUser]                     = useState(null);
   const [followersCount, setFollowersCount] = useState(0);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [loading, setLoading]         = useState(true);
+  const [isFollowing, setIsFollowing]       = useState(false);
+  const [loading, setLoading]               = useState(true);
 
   // — edición de bio —
   const [editingBio, setEditingBio] = useState(false);
   const [draftBio, setDraftBio]     = useState("");
 
-  // — datos extra del perfil —
+  // — datos extra —
   const [interests, setInterests]           = useState([]);
   const [specialties, setSpecialties]       = useState([]);
   const [certifications, setCertifications] = useState([]);
@@ -28,7 +27,7 @@ export default function ProfilePage() {
   const [level, setLevel]                   = useState("");
 
   // — Stripe fields —
-  const [stripeStatus, setStripeStatus]           = useState(null);
+  const [stripeStatus, setStripeStatus]         = useState(null);
   const [stripePayoutReady, setStripePayoutReady] = useState(false);
 
   // — usuario actual —
@@ -95,7 +94,7 @@ export default function ProfilePage() {
       body: JSON.stringify({ bio: draftBio }),
     });
     if (res.ok) {
-      setUser((u) => ({ ...u, bio: draftBio }));
+      setUser(u => ({ ...u, bio: draftBio }));
       setEditingBio(false);
     } else {
       alert("Error guardando biografía.");
@@ -114,7 +113,7 @@ export default function ProfilePage() {
     });
     const { following } = await res.json();
     setIsFollowing(following);
-    setFollowersCount((c) => c + (following ? 1 : -1));
+    setFollowersCount(c => c + (following ? 1 : -1));
   };
 
   if (loading || !user) {
@@ -141,7 +140,6 @@ export default function ProfilePage() {
       <main className="max-w-3xl mx-auto p-4 space-y-8">
         {user.role === "profesor" ? (
           <>
-            {/* Profesor: secciones + Stripe */}
             <TeacherSections
               user={user}
               userId={id}
@@ -157,10 +155,7 @@ export default function ProfilePage() {
               refreshProfile={() => window.location.reload()}
             />
 
-            {/* Slot picker si es alumno y tutor ya verificado */}
-            {currentUserRole === "alumno" &&
-             !isOwn &&
-             stripeStatus === "verified" && (
+            {currentUserRole === "alumno" && !isOwn && stripeStatus === "verified" && (
               <section className="mt-8">
                 <h2 className="text-xl font-semibold mb-2">Reserva tu clase</h2>
                 <StudentSlotPicker

@@ -1,4 +1,3 @@
-// frontend/app/components/TeacherSections.js
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,7 +5,6 @@ import {
   TEACHER_SPECIALTIES,
   TEACHER_CERTIFICATIONS,
   LANGUAGE_LIST,
-  // Nótese que NATIONALITIES ya no se usa aquí, pues solo se muestra en registro
 } from "../data/predefinedFields";
 import TeacherWeeklyScheduler from "./TeacherWeeklyScheduler";
 
@@ -40,35 +38,9 @@ export default function TeacherSections({
   const [editingNat, setEditingNat] = useState(false);
   const [draftNat, setDraftNat] = useState(nationality);
 
-  // — Sincronizamos localmente el estado de Stripe con la prop que viene de ProfilePage —
-  const [localStripeStatus, setLocalStripeStatus] = useState(stripeStatus);
-
-  useEffect(() => {
-    setLocalStripeStatus(stripeStatus);
-  }, [stripeStatus]);
-
-  // — Handler para iniciar onboarding en Stripe —
-  const handleOnboard = async () => {
-    try {
-      console.log("→ handleOnboard token:", token);
-      const res = await fetch("/api/stripe/create-account", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        const errorJson = await res.json();
-        console.error("Error al solicitar Stripe account:", errorJson);
-        throw new Error(errorJson.error || "Error al crear cuenta Stripe");
-      }
-      const { url } = await res.json();
-      window.location.href = url;
-    } catch (err) {
-      console.error("Error en handleOnboard():", err);
-      alert("No se pudo iniciar el onboarding de Stripe. Intenta nuevamente.");
-    }
+  // — Handler para iniciar OAuth de Stripe Standard —
+  const handleOnboard = () => {
+    window.location.href = `/api/stripe/oauth/connect?state=${token}`;
   };
 
   // — Handlers para actualizar cada campo en /api/users/:id/fields —
@@ -137,7 +109,7 @@ export default function TeacherSections({
     refreshProfile();
   };
 
-  // — Un pequeño componente Chip reutilizable —
+  // — Componente Chip —
   const Chip = ({ children, onRemove }) => (
     <span className="inline-block bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs mr-2 mb-1">
       {children}
@@ -149,12 +121,11 @@ export default function TeacherSections({
     </span>
   );
 
-  // — Dado el estado de Stripe, determinamos qué mostrar —
+  // — Render del bloque Stripe según estado —
   const renderStripeBlock = () => {
-    if (!isOwn) return null; // Sólo el propio profesor lo ve
+    if (!isOwn) return null;
 
-    switch (localStripeStatus) {
-      // Cuenta recién creada, sin Onboarding → invitamos a completar
+    switch (stripeStatus) {
       case "new":
         return (
           <section className="mb-6">
@@ -174,8 +145,6 @@ export default function TeacherSections({
             </div>
           </section>
         );
-
-      // Falta información en Stripe (requiere datos adicionales)
       case "requirements_incomplete":
         return (
           <section className="mb-6">
@@ -184,19 +153,17 @@ export default function TeacherSections({
                 ⚠ Información incompleta en Stripe
               </h3>
               <p className="mb-2 text-orange-700">
-                Tienes información pendiente en tu cuenta de Stripe. Completa los datos faltantes para activar tu cuenta.
+                Tienes información pendiente en tu cuenta de Stripe. Completa los datos faltantes.
               </p>
               <button
                 onClick={handleOnboard}
                 className="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600"
               >
-                Completar información en Stripe
+                Completar información
               </button>
             </div>
           </section>
         );
-
-      // Cuenta creada, pero pendiente de revisión (stripe pone status “pending_review” o similar)
       case "pending_review":
       case "pending":
       case "under_review":
@@ -207,13 +174,11 @@ export default function TeacherSections({
                 🕐 Cuenta pendiente de revisión
               </h3>
               <p className="mb-2 text-blue-700">
-                Ya completaste el onboarding. Tu cuenta está pendiente de revisión por Stripe. Tan pronto como se verifique, podrás recibir pagos.
+                Ya completaste el onboarding. Tu cuenta está pendiente de revisión por Stripe.
               </p>
             </div>
           </section>
         );
-
-      // Cuenta verificada y lista para pagos → no mostrar bloque de Stripe
       case "verified":
       case "active":
         return (
@@ -223,41 +188,21 @@ export default function TeacherSections({
                 ✅ Pagos configurados
               </h3>
               <p className="mb-2 text-green-700">
-                ¡Tu cuenta de Stripe está verificada! Ya puedes recibir pagos de tus alumnos.
+                ¡Tu cuenta de Stripe está verificada! Ya puedes recibir pagos.
               </p>
             </div>
           </section>
         );
-
-      // Cualquier otro estado “desconocido” lo tratamos como “new”
       default:
-        return (
-          <section className="mb-6">
-            <div className="max-w-3xl mx-auto p-4 border border-yellow-300 bg-yellow-50 rounded">
-              <h3 className="font-semibold text-lg mb-2 text-yellow-800">
-                ⏳ Configura tus pagos con Stripe
-              </h3>
-              <p className="mb-2 text-yellow-700">
-                Para que tus alumnos puedan reservar y pagarte, completa el onboarding en Stripe.
-              </p>
-              <button
-                onClick={handleOnboard}
-                className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
-              >
-                Configurar pagos con Stripe
-              </button>
-            </div>
-          </section>
-        );
+        return null;
     }
   };
 
   return (
     <>
-      {/* — 1. Mostrar bloque de Stripe según el estado actual — */}
       {renderStripeBlock()}
 
-      {/* — 2. Especialidades */}
+      {/* Especialidades */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Especialidades</h2>
         {isOwn && editingSpecs ? (
@@ -275,9 +220,7 @@ export default function TeacherSections({
               ))}
             </div>
             <div className="flex flex-wrap gap-2 mb-2">
-              {TEACHER_SPECIALTIES.filter(
-                (i) => !draftSpecs.includes(i)
-              ).map((esp, idx) => (
+              {TEACHER_SPECIALTIES.filter(i => !draftSpecs.includes(i)).map((esp, idx) => (
                 <button
                   key={idx}
                   type="button"
@@ -292,7 +235,7 @@ export default function TeacherSections({
               type="text"
               placeholder="Agregar especialidad…"
               className="border p-2 rounded mb-2"
-              onKeyDown={(e) => {
+              onKeyDown={e => {
                 if (e.key === "Enter" && e.target.value) {
                   setDraftSpecs([...draftSpecs, e.target.value]);
                   e.target.value = "";
@@ -300,10 +243,7 @@ export default function TeacherSections({
               }}
             />
             <div>
-              <button
-                onClick={saveSpecs}
-                className="mr-2 bg-blue-600 text-white px-4 py-2 rounded"
-              >
+              <button onClick={saveSpecs} className="mr-2 bg-blue-600 text-white px-4 py-2 rounded">
                 Guardar
               </button>
               <button
@@ -325,10 +265,7 @@ export default function TeacherSections({
               ))}
             </div>
             {isOwn && (
-              <button
-                onClick={() => setEditingSpecs(true)}
-                className="text-blue-600"
-              >
+              <button onClick={() => setEditingSpecs(true)} className="text-blue-600">
                 Editar especialidades
               </button>
             )}
@@ -336,7 +273,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* — 3. Certificaciones */}
+      {/* Certificaciones */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Certificaciones</h2>
         {isOwn && editingCerts ? (
@@ -354,9 +291,7 @@ export default function TeacherSections({
               ))}
             </div>
             <div className="flex flex-wrap gap-2 mb-2">
-              {TEACHER_CERTIFICATIONS.filter(
-                (i) => !draftCerts.includes(i)
-              ).map((cert, idx) => (
+              {TEACHER_CERTIFICATIONS.filter(i => !draftCerts.includes(i)).map((cert, idx) => (
                 <button
                   key={idx}
                   type="button"
@@ -371,7 +306,7 @@ export default function TeacherSections({
               type="text"
               placeholder="Agregar certificación…"
               className="border p-2 rounded mb-2"
-              onKeyDown={(e) => {
+              onKeyDown={e => {
                 if (e.key === "Enter" && e.target.value) {
                   setDraftCerts([...draftCerts, e.target.value]);
                   e.target.value = "";
@@ -379,10 +314,7 @@ export default function TeacherSections({
               }}
             />
             <div>
-              <button
-                onClick={saveCerts}
-                className="mr-2 bg-blue-600 text-white px-4 py-2 rounded"
-              >
+              <button onClick={saveCerts} className="mr-2 bg-blue-600 text-white px-4 py-2 rounded">
                 Guardar
               </button>
               <button
@@ -404,10 +336,7 @@ export default function TeacherSections({
               ))}
             </div>
             {isOwn && (
-              <button
-                onClick={() => setEditingCerts(true)}
-                className="text-blue-600"
-              >
+              <button onClick={() => setEditingCerts(true)} className="text-blue-600">
                 Editar certificaciones
               </button>
             )}
@@ -415,7 +344,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* — 4. Idiomas */}
+      {/* Idiomas */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Idiomas</h2>
         {isOwn && editingLangs ? (
@@ -433,24 +362,22 @@ export default function TeacherSections({
               ))}
             </div>
             <div className="flex flex-wrap gap-2 mb-2">
-              {LANGUAGE_LIST.filter((i) => !draftLangs.includes(i)).map(
-                (lang, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    className="px-2 py-1 rounded bg-gray-100 hover:bg-blue-200"
-                    onClick={() => setDraftLangs([...draftLangs, lang])}
-                  >
-                    + {lang}
-                  </button>
-                )
-              )}
+              {LANGUAGE_LIST.filter(i => !draftLangs.includes(i)).map((lang, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className="px-2 py-1 rounded bg-gray-100 hover:bg-blue-200"
+                  onClick={() => setDraftLangs([...draftLangs, lang])}
+                >
+                  + {lang}
+                </button>
+              ))}
             </div>
             <input
               type="text"
               placeholder="Agregar idioma…"
               className="border p-2 rounded mb-2"
-              onKeyDown={(e) => {
+              onKeyDown={e => {
                 if (e.key === "Enter" && e.target.value) {
                   setDraftLangs([...draftLangs, e.target.value]);
                   e.target.value = "";
@@ -458,10 +385,7 @@ export default function TeacherSections({
               }}
             />
             <div>
-              <button
-                onClick={saveLangs}
-                className="mr-2 bg-blue-600 text-white px-4 py-2 rounded"
-              >
+              <button onClick={saveLangs} className="mr-2 bg-blue-600 text-white px-4 py-2 rounded">
                 Guardar
               </button>
               <button
@@ -483,10 +407,7 @@ export default function TeacherSections({
               ))}
             </div>
             {isOwn && (
-              <button
-                onClick={() => setEditingLangs(true)}
-                className="text-blue-600"
-              >
+              <button onClick={() => setEditingLangs(true)} className="text-blue-600">
                 Editar idiomas
               </button>
             )}
@@ -494,11 +415,9 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* — 5. Tarifa por hora (USD) */}
+      {/* Tarifa por hora */}
       <section>
-        <h2 className="text-xl font-semibold mb-2">
-          Tarifa por hora (USD)
-        </h2>
+        <h2 className="text-xl font-semibold mb-2">Tarifa por hora (USD)</h2>
         {isOwn && editingPrice ? (
           <div className="flex items-center gap-2">
             <input
@@ -506,13 +425,10 @@ export default function TeacherSections({
               min="0"
               className="border p-2 rounded"
               value={draftPrice}
-              onChange={(e) => setDraftPrice(e.target.value)}
+              onChange={e => setDraftPrice(e.target.value)}
             />
-            <button
-              onClick={savePrice}
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-            >
-                Guardar
+            <button onClick={savePrice} className="bg-blue-600 text-white px-4 py-2 rounded">
+              Guardar
             </button>
             <button
               onClick={() => {
@@ -521,17 +437,14 @@ export default function TeacherSections({
               }}
               className="px-4 py-2 rounded border"
             >
-                Cancelar
+              Cancelar
             </button>
           </div>
         ) : (
           <p>
             {price ? `$${price} USD / hora` : "No ha definido tarifa."}
             {isOwn && (
-              <button
-                onClick={() => setEditingPrice(true)}
-                className="ml-2 text-blue-600"
-              >
+              <button onClick={() => setEditingPrice(true)} className="ml-2 text-blue-600">
                 Editar
               </button>
             )}
@@ -539,12 +452,10 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* — 6. Disponibilidad semanal */}
+      {/* Disponibilidad semanal */}
       {isOwn && (
         <section className="mt-6">
-          <h2 className="text-xl font-semibold mb-2">
-            Disponibilidad semanal
-          </h2>
+          <h2 className="text-xl font-semibold mb-2">Disponibilidad semanal</h2>
           <TeacherWeeklyScheduler userId={userId} />
         </section>
       )}

@@ -2,7 +2,7 @@
 
 require('dotenv').config();
 
-// Forzar a Node a preferir IPv4 sobre IPv6 (evita ENETUNREACH en IPv6)
+// Forzar IPv4 sobre IPv6
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
@@ -12,10 +12,10 @@ const cors    = require('cors');
 const http    = require('http');
 const { Server } = require('socket.io');
 
-const { webhookHandler, router: stripeRouter } = require('./routes/stripe');
-const authRoutes               = require('./routes/auth');
-const userRoutes               = require('./routes/users');
-const postRoutes               = require('./routes/posts');
+const stripeRouter = require('./routes/stripe');
+const authRoutes   = require('./routes/auth');
+const userRoutes   = require('./routes/users');
+const postRoutes   = require('./routes/posts');
 const availabilityRouter       = require('./routes/availability');
 const bookingRoutes            = require('./routes/bookings');
 const followsRoutes            = require('./routes/follows');
@@ -46,7 +46,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // herramientas sin origen
+    if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`Origen ${origin} no permitido por CORS`));
   },
@@ -54,16 +54,12 @@ app.use(cors({
 }));
 
 // ——————————————————————————————————
-// 1) Webhook de Stripe (raw body)
+// 1) Stripe routes (incluye webhook con raw body)
 // ——————————————————————————————————
-app.post(
-  '/api/stripe/webhook',
-  express.raw({ type: 'application/json' }),
-  webhookHandler
-);
+app.use('/api/stripe', stripeRouter);
 
 // ——————————————————————————————————
-// 2) JSON parser para todas las demás rutas
+// 2) JSON parser para el resto
 // ——————————————————————————————————
 app.use(express.json());
 
@@ -76,30 +72,29 @@ app.use((req, res, next) => {
 });
 
 // ——————————————————————————————————
-// 4) Archivos estáticos
+// 4) Static files
 // ——————————————————————————————————
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ——————————————————————————————————
 // 5) Montaje de rutas API
 // ——————————————————————————————————
-app.use('/api/stripe', stripeRouter);  // create-account y demás
-app.use('/api/auth',     authRoutes);
-app.use('/api/users',    userRoutes);
-app.use('/api/posts',    postRoutes);
-app.use('/api/availability', availabilityRouter);
-app.use('/api/bookings', bookingRoutes);
-app.use('/api/follows',  followsRoutes);
-app.use('/api/reviews',  reviewsRoutes);
-app.use('/api/search',   searchRoutes);
-app.use('/api/windows',  windowsRoutes);
-app.use('/api/notifications', notificationsRouter);
-app.use('/api/progress',        progressRoutes);
+app.use('/api/auth',               authRoutes);
+app.use('/api/users',              userRoutes);
+app.use('/api/posts',              postRoutes);
+app.use('/api/availability',       availabilityRouter);
+app.use('/api/bookings',           bookingRoutes);
+app.use('/api/follows',            followsRoutes);
+app.use('/api/reviews',            reviewsRoutes);
+app.use('/api/search',             searchRoutes);
+app.use('/api/windows',            windowsRoutes);
+app.use('/api/notifications',      notificationsRouter);
+app.use('/api/progress',           progressRoutes);
 app.use('/api/weeklyAvailability', weeklyAvailabilityRoutes);
-app.use('/api/slots',           slotsRoutes);
-app.use(avatarRouter);          // POST /api/users/:id/avatar
-app.use('/api/chat_rooms', chatRoomsRouter);
-app.use('/api/messages',   messagesRouter);
+app.use('/api/slots',              slotsRoutes);
+app.use(avatarRouter);             // POST /api/users/:id/avatar
+app.use('/api/chat_rooms',         chatRoomsRouter);
+app.use('/api/messages',           messagesRouter);
 
 // Health check
 app.get('/api/ping', (req, res) => {
@@ -125,18 +120,12 @@ io.on('connection', socket => {
   });
 });
 
-// ——————————————————————————————————
-// Manejo de errores del servidor
-// ——————————————————————————————————
+// Error & startup
 server.on('error', err => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`Puerto ${PORT} en uso, intenta con otro (ej.: PORT=4001 npm run dev)`);
+    console.error(`Puerto ${PORT} en uso, intenta otro.`);
     process.exit(1);
   }
   console.error(err);
 });
-
-// ——————————————————————————————————
-// Levantando servidor
-// ——————————————————————————————————
 server.listen(PORT, () => console.log(`Backend running on ${PORT}`));

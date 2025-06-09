@@ -4,6 +4,8 @@ require('dotenv').config();
 
 console.log("→ JWT_SECRET EN backend/stripe.js =", process.env.JWT_SECRET);
 console.log("→ STRIPE_SECRET_KEY EN backend/stripe.js =", process.env.STRIPE_SECRET_KEY);
+console.log("→ STRIPE_CLIENT_ID EN backend/stripe.js =", process.env.STRIPE_CLIENT_ID);
+console.log("→ BACKEND_URL EN backend/stripe.js =", process.env.BACKEND_URL);
 console.log("→ FRONTEND_URL EN backend/stripe.js =", process.env.FRONTEND_URL);
 
 const express = require('express');
@@ -11,124 +13,88 @@ const stripe  = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const pool    = require('../db');
 const jwt     = require('jsonwebtoken');
 
-const router         = express.Router();
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-const JWT_SECRET     = process.env.JWT_SECRET;
+const router     = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET;
 
 /**
- * Mapa de nacionalidades hispanohablantes a código ISO-3166-1 alpha-2.
+ * 1) GET /api/stripe/oauth/connect
+ *    Redirige al usuario al flujo OAuth de Stripe con estado=JWT
  */
-const SPANISH_SPEAKING_CODES = {
-  "Argentina":            "AR",
-  "Bolivia":              "BO",
-  "Chile":                "CL",
-  "Colombia":             "CO",
-  "Costa Rica":           "CR",
-  "Cuba":                 "CU",
-  "Ecuador":              "EC",
-  "El Salvador":          "SV",
-  "España":               "ES",
-  "Guatemala":            "GT",
-  "Guinea Ecuatorial":    "GQ",
-  "Honduras":             "HN",
-  "México":               "MX",
-  "Nicaragua":            "NI",
-  "Panamá":               "PA",
-  "Paraguay":             "PY",
-  "Perú":                 "PE",
-  "Puerto Rico":          "PR",
-  "República Dominicana": "DO",
-  "Uruguay":              "UY",
-  "Venezuela":            "VE"
-};
-
-/**
- * POST /api/stripe/create-account
- * Crea o recupera la cuenta Express de Stripe y devuelve el Account Link.
- */
-async function createAccountHandler(req, res) {
-  const authHeader = req.headers.authorization || '';
-  if (!authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
+router.get('/oauth/connect', (req, res) => {
+  const token = req.query.state;
+  if (!token) {
+    return res.status(400).send('Missing state');
+  }
+  // verificamos que sea un JWT válido
+  try {
+    jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    console.error('State JWT inválido:', err.message);
+    return res.status(400).send('Invalid state');
   }
 
+  const params = new URLSearchParams({
+    response_type: 'code',
+    scope:         'read_write',
+    client_id:     process.env.STRIPE_CLIENT_ID,
+    redirect_uri:  `${process.env.BACKEND_URL}/api/stripe/oauth/callback`,
+    state:         token
+  });
+  // redirigimos al usuario a Stripe
+  res.redirect(`https://connect.stripe.com/oauth/authorize?${params.toString()}`);
+});
+
+/**
+ * 2) GET /api/stripe/oauth/callback
+ *    Stripe redirige aquí con ?code & state.
+ *    Intercambiamos code por stripe_user_id y lo guardamos.
+ */
+router.get('/oauth/callback', async (req, res) => {
+  const { code, state } = req.query;
+  if (!code || !state) {
+    return res.status(400).send('Missing code or state');
+  }
+
+  // verificamos y extraemos userId del state JWT
   let payload;
   try {
-    payload = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+    payload = jwt.verify(state, JWT_SECRET);
   } catch (err) {
-    console.error('jwt.verify falló:', err.message);
-    return res.status(401).json({ error: 'Invalid token' });
+    console.error('State JWT inválido en callback:', err.message);
+    return res.status(400).send('Invalid state');
   }
   const userId = payload.id;
 
   try {
-    const { rows } = await pool.query(
-      `SELECT id, email, role, nationality, stripe_account_id
-         FROM users
-        WHERE id = $1`,
-      [userId]
-    );
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    const user = rows[0];
-
-    if (user.role !== 'profesor') {
-      return res.status(403).json({ error: 'Only tutors can create a Stripe account' });
-    }
-
-    let accountId = user.stripe_account_id;
-    if (!accountId) {
-      const isoCountry = SPANISH_SPEAKING_CODES[user.nationality] || 'US';
-      console.log(`→ Traduciendo nacionalidad "${user.nationality}" a "${isoCountry}"`);
-
-      const account = await stripe.accounts.create({
-        type:    'express',
-        country: isoCountry,
-        email:   user.email,
-      });
-      accountId = account.id;
-
-      await pool.query(
-        `UPDATE users
-            SET stripe_account_id = $1,
-                stripe_account_status = 'new'
-          WHERE id = $2`,
-        [accountId, userId]
-      );
-    }
-
-    const accountLink = await stripe.accountLinks.create({
-      account:     accountId,
-      refresh_url: `${process.env.FRONTEND_URL}/profile/${userId}`,
-      return_url:  `${process.env.FRONTEND_URL}/profile/${userId}`,
-      type:        'account_onboarding',
+    // intercambiamos el code por stripe_user_id
+    const tokenResponse = await stripe.oauth.token({
+      grant_type: 'authorization_code',
+      code
     });
+    const stripeAccountId = tokenResponse.stripe_user_id;
 
+    // guardamos en la BD
     await pool.query(
       `UPDATE users
-          SET requested_account_link_at = NOW()
-        WHERE id = $1`,
-      [userId]
+         SET stripe_account_id    = $1,
+             stripe_account_status = 'pending_information'
+       WHERE id = $2`,
+      [stripeAccountId, userId]
     );
 
-    return res.json({ url: accountLink.url });
+    // redirigir de vuelta al perfil
+    res.redirect(`${process.env.FRONTEND_URL}/profile/${userId}`);
   } catch (err) {
-    console.error('Error in /api/stripe/create-account:', err);
-    return res.status(500).json({ error: 'Server error while creating Stripe account' });
+    console.error('Error en /oauth/callback:', err);
+    res.status(500).send('Error connecting Stripe account');
   }
-}
+});
 
 /**
- * Manejador de webhook de Stripe.
- * Debe montarse con express.raw() antes de express.json().
+ * Webhook handler (seguimos manejando account.updated si quieres)
  */
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 async function webhookHandler(req, res) {
-  console.log('→ LLEGÓ UN POST A /api/stripe/webhook');
-  console.log('→ stripe-signature:', req.headers['stripe-signature']);
-  console.log('→ raw body length:', req.body.length);
-  console.log('→ endpointSecret:', endpointSecret);
-
   let event;
   try {
     event = stripe.webhooks.constructEvent(
@@ -136,90 +102,47 @@ async function webhookHandler(req, res) {
       req.headers['stripe-signature'],
       endpointSecret
     );
-    console.log('   → Evento recibido:', event.type);
   } catch (err) {
-    console.error('⚠️  Error de firma en webhook:', err.message);
+    console.error('⚠️ Error de firma en webhook:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   const acct = event.data.object;
   const acctId = acct.id;
 
-  // 1) Tutor autorizó la app en Stripe
-  if (event.type === 'account.application.authorized') {
-    console.log('   → application.authorized para cuenta', acctId);
-    await pool.query(
-      `UPDATE users
-         SET stripe_account_status = 'pending_information',
-             stripe_payout_ready   = FALSE
-       WHERE stripe_account_id = $1`,
+  // Puedes seguir procesando account.updated si lo deseas...
+  if (event.type === 'account.updated') {
+    console.log('→ account.updated para cuenta', acctId);
+    const { rows } = await pool.query(
+      `SELECT id FROM users WHERE stripe_account_id = $1`,
       [acctId]
     );
-    console.log(`   → Usuario con account ${acctId} marcado como pending_information`);
-  }
-
-  // 2) Estado completo de la cuenta
-  if (event.type === 'account.updated') {
-    console.log('   → account.updated para cuenta', acctId, 'payouts_enabled=', acct.payouts_enabled);
-
-    try {
-      const { rows } = await pool.query(
-        `SELECT id FROM users WHERE stripe_account_id = $1`,
-        [acctId]
+    if (rows.length) {
+      const uId = rows[0].id;
+      const newStatus = acct.payouts_enabled
+        ? 'verified'
+        : acct.requirements?.currently_due?.length
+          ? 'requirements_incomplete'
+          : 'pending_review';
+      await pool.query(
+        `UPDATE users
+           SET stripe_account_status = $1,
+               stripe_payout_ready   = $2
+         WHERE id = $3`,
+        [ newStatus, Boolean(acct.payouts_enabled), uId ]
       );
-      if (rows.length === 0) {
-        console.log(`   → No se encontró user con stripe_account_id=${acctId}`);
-      } else {
-        const userId = rows[0].id;
-
-        if (acct.payouts_enabled) {
-          await pool.query(
-            `UPDATE users
-               SET stripe_account_status = 'verified',
-                   stripe_payout_ready   = TRUE
-             WHERE id = $1`,
-            [userId]
-          );
-          console.log(`   → Usuario ${userId} marcado como verified`);
-
-        } else if (
-          Array.isArray(acct.requirements.currently_due) &&
-          acct.requirements.currently_due.length > 0
-        ) {
-          await pool.query(
-            `UPDATE users
-               SET stripe_account_status = 'requirements_incomplete',
-                   stripe_payout_ready   = FALSE
-             WHERE id = $1`,
-            [userId]
-          );
-          console.log(`   → Usuario ${userId} marcado como requirements_incomplete`);
-
-        } else {
-          await pool.query(
-            `UPDATE users
-               SET stripe_account_status = 'pending_review',
-                   stripe_payout_ready   = FALSE
-             WHERE id = $1`,
-            [userId]
-          );
-          console.log(`   → Usuario ${userId} marcado como pending_review`);
-        }
-      }
-    } catch (dbErr) {
-      console.error('Error actualizando user desde webhook:', dbErr);
+      console.log(`→ Usuario ${uId} marcado como ${newStatus}`);
     }
   }
 
-  // Responder 200 rápidamente
   res.json({ received: true });
 }
 
-// Solo montamos create-account en este router,
-// el webhookHandler se expone y se conecta con express.raw() en index.js
-router.post('/create-account', createAccountHandler);
-
-module.exports = {
-  router,
+// rutas exportadas
+router.post(
+  '/webhook',
+  express.raw({ type: 'application/json' }),
   webhookHandler
-};
+);
+
+module.exports = router;
