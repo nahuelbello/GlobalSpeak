@@ -1,11 +1,13 @@
+// frontend/app/auth/onboarding/page.js
+
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
+  PROFESSOR_NATIONALITIES,
+  STUDENT_NATIONALITIES,
   LANGUAGE_LIST,
-  NATIONALITIES,
-  STUDENT_INTERESTS,
   PROFICIENCY_LEVELS,
   LEVELS,
 } from "../../data/predefinedFields";
@@ -75,14 +77,14 @@ export default function OnboardingPage() {
 
     if (role === "alumno") {
       payload.nationality = nationality;
-      payload.level  = spanishLevel;
-      payload.bio         = bio;
-      payload.interests   = interests;
+      payload.level = spanishLevel;
+      payload.bio = bio;
+      payload.interests = interests;
     } else {
       payload.nationality = teacherNationality;
-      payload.bio         = teacherBio;
-      payload.videoUrl    = teacherVideo?.name || null;
-      payload.price       = price;
+      payload.bio = teacherBio;
+      payload.videoUrl = teacherVideo?.name || null;
+      payload.price = price;
     }
 
     const res = await fetch(`/api/users/${user.id}/fields`, {
@@ -116,7 +118,9 @@ export default function OnboardingPage() {
           >
             <option value="">Pick a language</option>
             {LANGUAGE_LIST.map((l) => (
-              <option key={l} value={l}>{l}</option>
+              <option key={l} value={l}>
+                {l}
+              </option>
             ))}
           </select>
           <select
@@ -126,7 +130,9 @@ export default function OnboardingPage() {
           >
             <option value="">Level</option>
             {PROFICIENCY_LEVELS.map((lvl) => (
-              <option key={lvl} value={lvl}>{lvl}</option>
+              <option key={lvl} value={lvl}>
+                {lvl}
+              </option>
             ))}
           </select>
           <button
@@ -140,7 +146,9 @@ export default function OnboardingPage() {
         <ul className="space-y-1">
           {languages.map((l, i) => (
             <li key={i} className="flex justify-between items-center">
-              <span>{l.lang} — {l.level}</span>
+              <span>
+                {l.lang} — {l.level}
+              </span>
               <button
                 onClick={() => removeLanguage(i)}
                 className="text-red-500"
@@ -152,9 +160,10 @@ export default function OnboardingPage() {
         </ul>
       </div>
 
-      {/* Alumno: nacionalidad, bio e intereses */}
+      {/* SEPARACIÓN DE CAMPOS: Alumno vs Profesor */}
       {role === "alumno" && (
         <>
+          {/* Alumno: nacionalidad */}
           <div>
             <label className="block mb-1">Nationality</label>
             <select
@@ -164,12 +173,15 @@ export default function OnboardingPage() {
               required
             >
               <option value="">Pick your nationality…</option>
-              {NATIONALITIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              {STUDENT_NATIONALITIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
             </select>
           </div>
 
+          {/* Alumno: bio */}
           <div>
             <label className="block mb-1">Short bio</label>
             <textarea
@@ -180,6 +192,7 @@ export default function OnboardingPage() {
             />
           </div>
 
+          {/* Alumno: intereses */}
           <div>
             <label className="block mb-1">Your interests</label>
             <div className="flex gap-2 mb-2">
@@ -189,9 +202,12 @@ export default function OnboardingPage() {
                 onChange={(e) => setNewInterest(e.target.value)}
               >
                 <option value="">Pick an interest</option>
-                {STUDENT_INTERESTS.map((i) => (
-                  <option key={i} value={i}>{i}</option>
-                ))}
+                {/* Aquí podrías mapear STUDENT_INTERESTS o algo equivalente */}
+                {/* Ejemplo básico: */}
+                <option value="Conversación">Conversación</option>
+                <option value="Negocios">Negocios</option>
+                <option value="Exámenes DELE">Exámenes DELE</option>
+                {/* … */}
               </select>
               <button
                 type="button"
@@ -217,28 +233,28 @@ export default function OnboardingPage() {
           </div>
 
           {/* Alumno: nivel de español */}
-        <div>
-        <label className="block mb-1">Your Spanish level</label>
-        <select
-            className="w-full border px-2 py-1 mb-2"
-            value={spanishLevel}
-            onChange={(e) => setSpanishLevel(e.target.value)}
-            required
-        >
-            <option value="">Select your Spanish level…</option>
-            {LEVELS.map((lvl) => (
-            <option key={lvl} value={lvl}>
-                {lvl}
-            </option>
-            ))}
-        </select>
-        </div>
+          <div>
+            <label className="block mb-1">Your Spanish level</label>
+            <select
+              className="w-full border px-2 py-1 mb-2"
+              value={spanishLevel}
+              onChange={(e) => setSpanishLevel(e.target.value)}
+              required
+            >
+              <option value="">Select your Spanish level…</option>
+              {LEVELS.map((lvl) => (
+                <option key={lvl} value={lvl}>
+                  {lvl}
+                </option>
+              ))}
+            </select>
+          </div>
         </>
       )}
 
-      {/* Profesor: igual que antes */}
       {role === "profesor" && (
         <>
+          {/* Profesor: nacionalidad */}
           <div>
             <label className="block mb-1">Select your nationality</label>
             <select
@@ -247,13 +263,16 @@ export default function OnboardingPage() {
               onChange={(e) => setTeacherNationality(e.target.value)}
               required
             >
-              <option value="">Pick a country…</option>
-              {NATIONALITIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              <option value="">Pick a country (solo hispanohablantes)…</option>
+              {PROFESSOR_NATIONALITIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
             </select>
           </div>
 
+          {/* Profesor: bio */}
           <div>
             <label className="block mb-1">Short bio</label>
             <textarea
@@ -264,6 +283,7 @@ export default function OnboardingPage() {
             />
           </div>
 
+          {/* Profesor: video/audio de presentación */}
           <div>
             <label className="block mb-1">Presentation video/audio</label>
             <input
@@ -274,6 +294,7 @@ export default function OnboardingPage() {
             />
           </div>
 
+          {/* Profesor: tarifa por hora */}
           <div>
             <label className="block mb-1">Rate per hour (USD)</label>
             <input

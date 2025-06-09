@@ -12,17 +12,7 @@ const cors    = require('cors');
 const http    = require('http');
 const { Server } = require('socket.io');
 
-const app    = express();
-const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*' } });
-app.set('io', io);
-
-// Declaración del puerto antes de cualquier uso
-const PORT = process.env.PORT || 4000;
-
-// ——————————————————————————————————
-// Rutas ya existentes
-// ——————————————————————————————————
+const { webhookHandler, router: stripeRouter } = require('./routes/stripe');
 const authRoutes               = require('./routes/auth');
 const userRoutes               = require('./routes/users');
 const postRoutes               = require('./routes/posts');
@@ -40,65 +30,76 @@ const avatarRouter             = require('./routes/avatar');
 const chatRoomsRouter          = require('./routes/chat_rooms');
 const messagesRouter           = require('./routes/messages');
 
-// ——————————————————————————————————
-// Nueva ruta de Stripe (antes de express.json())
-// ——————————————————————————————————
-const stripeRouter = require('./routes/stripe');
+const app    = express();
+const server = http.createServer(app);
+const io     = new Server(server, { cors: { origin: '*' } });
+app.set('io', io);
+
+const PORT = process.env.PORT || 4000;
 
 // ——————————————————————————————————
-// Middlewares globales
-// ——————————————————————————————————
 // CORS dinámico
+// ——————————————————————————————————
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : [];
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);           // curl, Postman, etc.
+    if (!origin) return callback(null, true); // herramientas sin origen
     if (allowedOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`Origen ${origin} no permitido por CORS`));
   },
   credentials: true
 }));
 
-// **MUST**: Webhook de Stripe necesita raw body antes de JSON parser
-app.post('/api/stripe/webhook', stripeRouter);
+// ——————————————————————————————————
+// 1) Webhook de Stripe (raw body)
+// ——————————————————————————————————
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  webhookHandler
+);
 
-// Parse JSON para el resto
+// ——————————————————————————————————
+// 2) JSON parser para todas las demás rutas
+// ——————————————————————————————————
 app.use(express.json());
 
-// Logging middleware
+// ——————————————————————————————————
+// 3) Logging middleware
+// ——————————————————————————————————
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ▶ ${req.method} ${req.url}`);
   next();
 });
 
-// Sirve archivos estáticos de /public
+// ——————————————————————————————————
+// 4) Archivos estáticos
+// ——————————————————————————————————
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ——————————————————————————————————
-// Montaje de rutas API
+// 5) Montaje de rutas API
 // ——————————————————————————————————
-app.use('/api/auth',               authRoutes);
-app.use('/api/users',              userRoutes);
-app.use('/api/posts',              postRoutes);
-app.use('/api/availability',       availabilityRouter);
-app.use('/api/bookings',           bookingRoutes);
-app.use('/api/follows',            followsRoutes);
-app.use('/api/reviews',            reviewsRoutes);
-app.use('/api/search',             searchRoutes);
-app.use('/api/windows',            windowsRoutes);
-app.use('/api/notifications',      notificationsRouter);
-app.use('/api/progress',           progressRoutes);
+app.use('/api/stripe', stripeRouter);  // create-account y demás
+app.use('/api/auth',     authRoutes);
+app.use('/api/users',    userRoutes);
+app.use('/api/posts',    postRoutes);
+app.use('/api/availability', availabilityRouter);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/follows',  followsRoutes);
+app.use('/api/reviews',  reviewsRoutes);
+app.use('/api/search',   searchRoutes);
+app.use('/api/windows',  windowsRoutes);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/progress',        progressRoutes);
 app.use('/api/weeklyAvailability', weeklyAvailabilityRoutes);
-app.use('/api/slots',              slotsRoutes);
-app.use(avatarRouter);             // POST /api/users/:id/avatar
-app.use('/api/chat_rooms',         chatRoomsRouter);
-app.use('/api/messages',           messagesRouter);
-
-// Montamos las rutas de Stripe (excepto el webhook, que ya montamos arriba)
-app.use('/api/stripe', stripeRouter);
+app.use('/api/slots',           slotsRoutes);
+app.use(avatarRouter);          // POST /api/users/:id/avatar
+app.use('/api/chat_rooms', chatRoomsRouter);
+app.use('/api/messages',   messagesRouter);
 
 // Health check
 app.get('/api/ping', (req, res) => {
@@ -124,7 +125,9 @@ io.on('connection', socket => {
   });
 });
 
+// ——————————————————————————————————
 // Manejo de errores del servidor
+// ——————————————————————————————————
 server.on('error', err => {
   if (err.code === 'EADDRINUSE') {
     console.error(`Puerto ${PORT} en uso, intenta con otro (ej.: PORT=4001 npm run dev)`);
@@ -133,5 +136,7 @@ server.on('error', err => {
   console.error(err);
 });
 
+// ——————————————————————————————————
 // Levantando servidor
+// ——————————————————————————————————
 server.listen(PORT, () => console.log(`Backend running on ${PORT}`));

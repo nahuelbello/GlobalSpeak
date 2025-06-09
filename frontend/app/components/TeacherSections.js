@@ -1,3 +1,4 @@
+// frontend/app/components/TeacherSections.js
 "use client";
 
 import { useState, useEffect } from "react";
@@ -5,7 +6,7 @@ import {
   TEACHER_SPECIALTIES,
   TEACHER_CERTIFICATIONS,
   LANGUAGE_LIST,
-  NATIONALITIES,
+  // Nótese que NATIONALITIES ya no se usa aquí, pues solo se muestra en registro
 } from "../data/predefinedFields";
 import TeacherWeeklyScheduler from "./TeacherWeeklyScheduler";
 
@@ -19,6 +20,8 @@ export default function TeacherSections({
   price,
   nationality = "",
   token,
+  stripeStatus,
+  stripePayoutReady,
   refreshProfile,
 }) {
   // — Estados para edición de campos existentes —
@@ -37,15 +40,36 @@ export default function TeacherSections({
   const [editingNat, setEditingNat] = useState(false);
   const [draftNat, setDraftNat] = useState(nationality);
 
-  // — Estado para manejar Stripe Onboarding —
-  const [stripeStatus, setStripeStatus] = useState(user?.stripe_account_status || "new");
+  // — Sincronizamos localmente el estado de Stripe con la prop que viene de ProfilePage —
+  const [localStripeStatus, setLocalStripeStatus] = useState(stripeStatus);
 
-  // Si el `user` cambia (por refreshProfile), sincronizamos el stripeStatus
   useEffect(() => {
-    if (user?.stripe_account_status) {
-      setStripeStatus(user.stripe_account_status);
+    setLocalStripeStatus(stripeStatus);
+  }, [stripeStatus]);
+
+  // — Handler para iniciar onboarding en Stripe —
+  const handleOnboard = async () => {
+    try {
+      console.log("→ handleOnboard token:", token);
+      const res = await fetch("/api/stripe/create-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const errorJson = await res.json();
+        console.error("Error al solicitar Stripe account:", errorJson);
+        throw new Error(errorJson.error || "Error al crear cuenta Stripe");
+      }
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch (err) {
+      console.error("Error en handleOnboard():", err);
+      alert("No se pudo iniciar el onboarding de Stripe. Intenta nuevamente.");
     }
-  }, [user]);
+  };
 
   // — Handlers para actualizar cada campo en /api/users/:id/fields —
   const saveSpecs = async () => {
@@ -113,25 +137,6 @@ export default function TeacherSections({
     refreshProfile();
   };
 
-  // — Handler para iniciar onboarding en Stripe —
-  const handleOnboard = async () => {
-    try {
-      const res = await fetch("/api/stripe/create-account", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) throw new Error("Error al solicitar Stripe account");
-      const { url } = await res.json();
-      window.location.href = url;
-    } catch (err) {
-      console.error("Error en handleOnboard():", err);
-      alert("No se pudo iniciar el onboarding de Stripe. Intenta de nuevo.");
-    }
-  };
-
   // — Un pequeño componente Chip reutilizable —
   const Chip = ({ children, onRemove }) => (
     <span className="inline-block bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs mr-2 mb-1">
@@ -144,30 +149,115 @@ export default function TeacherSections({
     </span>
   );
 
+  // — Dado el estado de Stripe, determinamos qué mostrar —
+  const renderStripeBlock = () => {
+    if (!isOwn) return null; // Sólo el propio profesor lo ve
+
+    switch (localStripeStatus) {
+      // Cuenta recién creada, sin Onboarding → invitamos a completar
+      case "new":
+        return (
+          <section className="mb-6">
+            <div className="max-w-3xl mx-auto p-4 border border-yellow-300 bg-yellow-50 rounded">
+              <h3 className="font-semibold text-lg mb-2 text-yellow-800">
+                ⏳ Configura tus pagos con Stripe
+              </h3>
+              <p className="mb-2 text-yellow-700">
+                Para que tus alumnos puedan reservar y pagarte, completa el onboarding en Stripe.
+              </p>
+              <button
+                onClick={handleOnboard}
+                className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+              >
+                Configurar pagos con Stripe
+              </button>
+            </div>
+          </section>
+        );
+
+      // Falta información en Stripe (requiere datos adicionales)
+      case "requirements_incomplete":
+        return (
+          <section className="mb-6">
+            <div className="max-w-3xl mx-auto p-4 border border-orange-300 bg-orange-50 rounded">
+              <h3 className="font-semibold text-lg mb-2 text-orange-800">
+                ⚠ Información incompleta en Stripe
+              </h3>
+              <p className="mb-2 text-orange-700">
+                Tienes información pendiente en tu cuenta de Stripe. Completa los datos faltantes para activar tu cuenta.
+              </p>
+              <button
+                onClick={handleOnboard}
+                className="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600"
+              >
+                Completar información en Stripe
+              </button>
+            </div>
+          </section>
+        );
+
+      // Cuenta creada, pero pendiente de revisión (stripe pone status “pending_review” o similar)
+      case "pending_review":
+      case "pending":
+      case "under_review":
+        return (
+          <section className="mb-6">
+            <div className="max-w-3xl mx-auto p-4 border border-blue-300 bg-blue-50 rounded">
+              <h3 className="font-semibold text-lg mb-2 text-blue-800">
+                🕐 Cuenta pendiente de revisión
+              </h3>
+              <p className="mb-2 text-blue-700">
+                Ya completaste el onboarding. Tu cuenta está pendiente de revisión por Stripe. Tan pronto como se verifique, podrás recibir pagos.
+              </p>
+            </div>
+          </section>
+        );
+
+      // Cuenta verificada y lista para pagos → no mostrar bloque de Stripe
+      case "verified":
+      case "active":
+        return (
+          <section className="mb-6">
+            <div className="max-w-3xl mx-auto p-4 border border-green-300 bg-green-50 rounded">
+              <h3 className="font-semibold text-lg mb-2 text-green-800">
+                ✅ Pagos configurados
+              </h3>
+              <p className="mb-2 text-green-700">
+                ¡Tu cuenta de Stripe está verificada! Ya puedes recibir pagos de tus alumnos.
+              </p>
+            </div>
+          </section>
+        );
+
+      // Cualquier otro estado “desconocido” lo tratamos como “new”
+      default:
+        return (
+          <section className="mb-6">
+            <div className="max-w-3xl mx-auto p-4 border border-yellow-300 bg-yellow-50 rounded">
+              <h3 className="font-semibold text-lg mb-2 text-yellow-800">
+                ⏳ Configura tus pagos con Stripe
+              </h3>
+              <p className="mb-2 text-yellow-700">
+                Para que tus alumnos puedan reservar y pagarte, completa el onboarding en Stripe.
+              </p>
+              <button
+                onClick={handleOnboard}
+                className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+              >
+                Configurar pagos con Stripe
+              </button>
+            </div>
+          </section>
+        );
+    }
+  };
+
   return (
     <>
-      {/* 1. Si el tutor no está verificado en Stripe, mostrar botón de onboarding */}
-      {isOwn && stripeStatus !== "verified" && (
-        <section className="mb-6">
-          <div className="max-w-3xl mx-auto p-4 border border-yellow-300 bg-yellow-50 rounded">
-            <h3 className="font-semibold text-lg mb-2 text-yellow-800">
-              ⏳ Configura tus pagos
-            </h3>
-            <p className="mb-2 text-yellow-700">
-              Para recibir pagos por tus clases, debes completar un breve formulario en Stripe.
-            </p>
-            <button
-              onClick={handleOnboard}
-              className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
-            >
-              Configurar pagos con Stripe
-            </button>
-          </div>
-        </section>
-      )}
+      {/* — 1. Mostrar bloque de Stripe según el estado actual — */}
+      {renderStripeBlock()}
 
-
-      {/* 2. Especialidades */}
+      {/* — 2. Especialidades */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Especialidades</h2>
         {isOwn && editingSpecs ? (
@@ -246,7 +336,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* 3. Certificaciones */}
+      {/* — 3. Certificaciones */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Certificaciones</h2>
         {isOwn && editingCerts ? (
@@ -325,7 +415,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* 4. Idiomas */}
+      {/* — 4. Idiomas */}
       <section>
         <h2 className="text-xl font-semibold mb-2">Idiomas</h2>
         {isOwn && editingLangs ? (
@@ -404,7 +494,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* 5. Tarifa por hora (USD) */}
+      {/* — 5. Tarifa por hora (USD) */}
       <section>
         <h2 className="text-xl font-semibold mb-2">
           Tarifa por hora (USD)
@@ -422,7 +512,7 @@ export default function TeacherSections({
               onClick={savePrice}
               className="bg-blue-600 text-white px-4 py-2 rounded"
             >
-              Guardar
+                Guardar
             </button>
             <button
               onClick={() => {
@@ -431,7 +521,7 @@ export default function TeacherSections({
               }}
               className="px-4 py-2 rounded border"
             >
-              Cancelar
+                Cancelar
             </button>
           </div>
         ) : (
@@ -449,7 +539,7 @@ export default function TeacherSections({
         )}
       </section>
 
-      {/* 6. Disponibilidad semanal */}
+      {/* — 6. Disponibilidad semanal */}
       {isOwn && (
         <section className="mt-6">
           <h2 className="text-xl font-semibold mb-2">

@@ -13,6 +13,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
  * Devuelve detalles de un usuario, sus followersCount, isFollowing,
  * + campos extra (price, languages, specialties, certifications, interests, video_url)
  * + stats (según rol) y progress si es alumno.
+ * Ahora también incluye stripe_account_status y stripe_payout_ready.
  */
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
@@ -30,10 +31,11 @@ router.get('/:id', async (req, res) => {
   }
 
   try {
-    // 2) Datos básicos (incluye video_url en users)
+    // 2) Datos básicos (ahora incluyendo stripe_account_status y stripe_payout_ready)
     const userRes = await pool.query(
       `SELECT id, name, email, role, bio, avatar_url, nationality,
-              price, level, video_url
+              price, level, video_url,
+              stripe_account_status, stripe_payout_ready
        FROM users
        WHERE id = $1`,
       [id]
@@ -141,6 +143,9 @@ router.get('/:id', async (req, res) => {
       price:    user.price,
       level:    user.level,
       videoUrl: user.video_url,
+      // Aquí añadimos stripe_account_status y stripe_payout_ready
+      stripe_account_status: user.stripe_account_status,
+      stripe_payout_ready:   user.stripe_payout_ready,
       stats,
       progress
     });
